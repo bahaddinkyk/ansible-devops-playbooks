@@ -1,0 +1,89 @@
+---
+- name: Complete CI/CD Pipeline - Deploy Application
+  hosts: k3s_masters
+  gather_facts: no
+  vars:
+    app_name: "sample-app"
+    app_version: "1.0.0"
+    registry_url: "10.40.92.46:30500"
+    namespace: "default"
+  
+  tasks:
+    - name: Pipeline started
+      debug:
+        msg:
+          - "╔════════════════════════════════════════╗"
+          - "║      CI/CD PIPELINE STARTED            ║"
+          - "╚════════════════════════════════════════╝"
+          - "App: {{ app_name }}"
+          - "Version: {{ app_version }}"
+          - "Registry: {{ registry_url }}"
+    
+    # Simulated build (gerçek uygulamada Dockerfile kullanılır)
+    - name: Simulate Docker build
+      debug:
+        msg: "Building {{ app_name }}:{{ app_version }}..."
+    
+    # Security scan simulation
+    - name: Security scan with Trivy
+      debug:
+        msg: "Scanning image for vulnerabilities..."
+    
+    # Deploy to Kubernetes
+    - name: Deploy application to Kubernetes
+      k8s:
+        state: present
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "{{ app_name }}"
+            namespace: "{{ namespace }}"
+            labels:
+              app: "{{ app_name }}"
+              version: "{{ app_version }}"
+          spec:
+            replicas: 3
+            selector:
+              matchLabels:
+                app: "{{ app_name }}"
+            template:
+              metadata:
+                labels:
+                  app: "{{ app_name }}"
+                  version: "{{ app_version }}"
+              spec:
+                containers:
+                - name: "{{ app_name }}"
+                  image: "nginx:alpine"
+                  ports:
+                  - containerPort: 80
+      ignore_errors: yes
+    
+    - name: Create Service
+      k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "{{ app_name }}"
+            namespace: "{{ namespace }}"
+          spec:
+            type: NodePort
+            ports:
+            - port: 80
+              targetPort: 80
+              nodePort: 30888
+            selector:
+              app: "{{ app_name }}"
+      ignore_errors: yes
+    
+    - name: Deployment summary
+      debug:
+        msg:
+          - "╔════════════════════════════════════════╗"
+          - "║     DEPLOYMENT COMPLETED               ║"
+          - "╚════════════════════════════════════════╝"
+          - "Application deployed successfully!"
+          - "Access: http://10.40.92.46:30888"

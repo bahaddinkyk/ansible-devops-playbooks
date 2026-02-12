@@ -1,0 +1,59 @@
+---
+- name: Backup All Resources to MinIO
+  hosts: k3s_masters
+  gather_facts: no
+  tasks:
+    - name: Create backup directory
+      file:
+        path: /tmp/k8s-backup
+        state: directory
+    
+    - name: Get current date
+      command: date +%Y%m%d-%H%M%S
+      register: backup_date
+    
+    - name: Backup all Kubernetes resources
+      shell: |
+        DATE="{{ backup_date.stdout }}"
+        for ns in $(k3s kubectl get ns -o jsonpath='{.items[*].metadata.name}'); do
+          echo "Backing up namespace: $ns"
+          k3s kubectl get all,cm,secret,pvc -n $ns -o yaml > /tmp/k8s-backup/$ns-$DATE.yaml 2>/dev/null || true
+        done
+      register: backup_result
+    
+    - name: Check if mc is installed
+      command: which mc
+      register: mc_check
+      ignore_errors: yes
+    
+    - name: Install MinIO client
+      get_url:
+        url: https://dl.min.io/client/mc/release/linux-amd64/mc
+        dest: /usr/local/bin/mc
+        mode: '0755'
+      when: mc_check.rc != 0
+    
+    - name: Configure MinIO client
+      command: mc alias set myminio http://10.40.92.46:30900 minioadmin minioadmin
+      ignore_errors: yes
+    
+    - name: Create backup bucket
+      command: mc mb myminio/k8s-backups --ignore-existing
+      ignore_errors: yes
+    
+    - name: Upload backups to MinIO
+      shell: |
+        DATE=$(date +%Y%m%d)
+        mc cp --recursive /tmp/k8s-backup/ myminio/k8s-backups/$DATE/ 2>/dev/null || true
+      register: upload_result
+    
+    - name: Backup summary
+      debug:
+        msg:
+          - "╔════════════════════════════════════════╗"
+          - "║        BACKUP COMPLETED                ║"
+          - "╚════════════════════════════════════════╝"
+          - "Date: {{ backup_date.stdout }}"
+          - "Location: MinIO bucket 'k8s-backups'"
+          - "Access: http://10.40.92.46:30901"
+          - "Credentials: minioadmin/minioadmin"

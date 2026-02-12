@@ -1,0 +1,65 @@
+---
+- name: Test All Service Integrations
+  hosts: k3s_masters
+  gather_facts: no
+  tasks:
+    - name: Test Prometheus
+      uri:
+        url: http://10.40.92.46:30090/-/healthy
+        method: GET
+        status_code: 200
+      register: prometheus_test
+      ignore_errors: yes
+    
+    - name: Test Grafana
+      uri:
+        url: http://10.40.92.46:30300/api/health
+        method: GET
+        status_code: 200
+      register: grafana_test
+      ignore_errors: yes
+    
+    - name: Test Docker Registry
+      uri:
+        url: http://10.40.92.46:30500/v2/
+        method: GET
+        status_code: 200
+      register: registry_test
+      ignore_errors: yes
+    
+    - name: Test SonarQube
+      uri:
+        url: http://10.40.92.46:30902/api/system/health
+        method: GET
+        status_code: 200
+      register: sonar_test
+      ignore_errors: yes
+    
+    - name: Test MinIO
+      uri:
+        url: http://10.40.92.46:30900/minio/health/live
+        method: GET
+        status_code: 200
+      register: minio_test
+      ignore_errors: yes
+    
+    - name: Test Nexus
+      uri:
+        url: http://10.40.92.46:30810
+        method: GET
+        status_code: [200, 302]
+      register: nexus_test
+      ignore_errors: yes
+    
+    - name: Integration Test Results
+      debug:
+        msg:
+          - "╔════════════════════════════════════════╗"
+          - "║   SERVICE INTEGRATION TEST RESULTS     ║"
+          - "╚════════════════════════════════════════╝"
+          - "Prometheus:   {{ 'OK ✅' if prometheus_test.status == 200 else 'FAIL ❌' }}"
+          - "Grafana:      {{ 'OK ✅' if grafana_test.status == 200 else 'FAIL ❌' }}"
+          - "Registry:     {{ 'OK ✅' if registry_test.status == 200 else 'FAIL ❌' }}"
+          - "SonarQube:    {{ 'OK ✅' if sonar_test.status == 200 else 'FAIL ❌' }}"
+          - "MinIO:        {{ 'OK ✅' if minio_test.status == 200 else 'FAIL ❌' }}"
+          - "Nexus:        {{ 'OK ✅' if nexus_test.status in [200, 302] else 'FAIL ❌' }}"

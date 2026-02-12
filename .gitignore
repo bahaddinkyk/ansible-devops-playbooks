@@ -1,0 +1,26 @@
+# Ansible
+*.retry
+.ansible/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Secrets
+*secret*
+*password*
+*token*
+vault-keys/
+.vault-pass
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
