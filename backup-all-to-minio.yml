@@ -2,6 +2,7 @@
 - name: Backup All Resources to MinIO
   hosts: k3s_masters
   gather_facts: no
+  become: yes  # ← ROOT YETKİSİ EKLENDİ
   tasks:
     - name: Create backup directory
       file:
@@ -36,6 +37,7 @@
     - name: Configure MinIO client
       command: mc alias set myminio http://10.40.92.46:30900 minioadmin minioadmin
       ignore_errors: yes
+      become_user: ckadmin
     
     - name: Create backup bucket
       command: mc mb myminio/k8s-backups --ignore-existing
