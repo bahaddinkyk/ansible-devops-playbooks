@@ -4,13 +4,16 @@
   connection: local
   gather_facts: false
   vars:
-    sonar_token: "sqa_623ef9ef96c373ace6ef53913cd9b8c974bdaa02"
+    sonar_token: "sqa_9a98406ea100ba504788392dff1b907ab7fc4655"
+    harbor_url: "http://10.40.92.46:30089"
+    argocd_url: "http://10.40.92.46:30102"
+    sonar_url:  "http://10.40.92.46:30902"
 
   tasks:
 
-  - name: "1/6 SonarQube - Proje Kontrol"
+  - name: "1/5 SonarQube - Proje Kontrol"
     uri:
-      url: "http://10.40.92.46:30902/api/projects/search"
+      url: "{{ sonar_url }}/api/projects/search"
       method: GET
       user: "{{ sonar_token }}"
       password: ""
@@ -21,25 +24,27 @@
 
   - name: "SonarQube Sonuç"
     debug:
-      msg: "✅ SonarQube: {{ sonar_result.json.components | map(attribute='name') | list }}"
-    when: sonar_result.status == 200
+      msg: "{{ '✅ SonarQube OK - Projeler: ' + (sonar_result.json.components | map(attribute='name') | list | string) if sonar_result.status == 200 else '❌ SonarQube DOWN' }}"
     ignore_errors: yes
 
-  - name: "2/6 Harbor - Registry Kontrol"
+  - name: "2/5 Harbor - Registry Kontrol"
     uri:
-      url: "http://10.40.92.46:30088"
+      url: "{{ harbor_url }}/api/v2.0/ping"
       method: GET
-      status_code: [200, 301, 302]
+      url_username: "admin"
+      url_password: "Harbor12345"
+      force_basic_auth: yes
+      status_code: [200]
     register: harbor_result
     ignore_errors: yes
 
   - name: "Harbor Sonuç"
     debug:
-      msg: "{{ '✅ Harbor: OK' if harbor_result.status in [200,301,302] else '❌ Harbor: DOWN' }}"
+      msg: "{{ '✅ Harbor OK' if harbor_result.status == 200 else '❌ Harbor DOWN' }}"
 
-  - name: "3/6 ArgoCD - Kontrol"
+  - name: "3/5 ArgoCD - Uygulama Kontrol"
     uri:
-      url: "http://10.40.92.46:30102"
+      url: "{{ argocd_url }}"
       method: GET
       status_code: [200, 301, 302, 307]
     register: argocd_result
@@ -47,14 +52,15 @@
 
   - name: "ArgoCD Sonuç"
     debug:
-      msg: "{{ '✅ ArgoCD: OK' if argocd_result.status in [200,301,302,307] else '❌ ArgoCD: DOWN' }}"
+      msg: "{{ '✅ ArgoCD OK' if argocd_result.status in [200,301,302,307] else '❌ ArgoCD DOWN' }}"
 
-  - name: "4/6 Tüm Servisler Health Check"
+  - name: "4/5 Tüm Platform Health Check"
     uri:
       url: "{{ item.url }}"
       method: GET
       status_code: [200, 201, 301, 302, 307, 401, 403]
       timeout: 5
+      validate_certs: no
     register: health
     ignore_errors: yes
     loop:
@@ -64,41 +70,27 @@
       - { name: "Vault",       url: "http://10.40.92.46:30820" }
       - { name: "MinIO",       url: "http://10.40.92.46:30901" }
       - { name: "Nexus",       url: "http://10.40.92.46:30810" }
-      - { name: "SonarQube",   url: "http://10.40.92.46:30902" }
       - { name: "Trivy",       url: "http://10.40.92.46:30809" }
-      - { name: "NeuVector",   url: "https://10.40.92.46:30701" }
       - { name: "Consul",      url: "http://10.40.92.46:30851" }
       - { name: "Jaeger",      url: "http://10.40.92.46:30686" }
+      - { name: "DynamoDB",    url: "http://10.40.92.46:30801" }
+      - { name: "ElasticMQ",   url: "http://10.40.92.46:30325" }
 
-  - name: "Health Check Sonuçları"
+  - name: "Platform Health Sonuçları"
     debug:
-      msg: "{{ '✅' if item.status | default(-1) in [200,201,301,302,307,401,403] else '❌' }} {{ item.item.name }}: HTTP {{ item.status | default('TIMEOUT') }}"
+      msg: "{{ '✅' if item.status | default(-1) in [200,201,301,302,307,401,403] else '❌' }} {{ item.item.name }}"
     loop: "{{ health.results }}"
     ignore_errors: yes
 
-  - name: "5/6 SonarQube - Proje Analiz Tetikle"
-    uri:
-      url: "http://10.40.92.46:30902/api/ce/submit"
-      method: POST
-      user: "{{ sonar_token }}"
-      password: ""
-      force_basic_auth: yes
-      body_format: form-urlencoded
-      body:
-        projectKey: "techstore"
-        projectName: "TechStore"
-      status_code: [200, 201, 400, 404]
-    register: analysis
-    ignore_errors: yes
-
-  - name: "6/6 Pipeline Özet"
+  - name: "5/5 Pipeline Özet"
     debug:
       msg:
-        - "╔══════════════════════════════════════╗"
-        - "║   🎉 CI/CD PIPELINE TAMAMLANDI!       ║"
-        - "╚══════════════════════════════════════╝"
-        - "SonarQube  → http://10.40.92.46:30902"
-        - "Harbor     → http://10.40.92.46:30088"
-        - "ArgoCD     → http://10.40.92.46:30102"
-        - "Semaphore  → http://10.40.92.46:30860"
-        - "Grafana    → http://10.40.92.46:30300"
+        - "╔══════════════════════════════════════════╗"
+        - "║   🎉 DevOps Platform CI/CD Pipeline      ║"
+        - "╠══════════════════════════════════════════╣"
+        - "║  SonarQube → http://10.40.92.46:30902   ║"
+        - "║  Harbor    → http://10.40.92.46:30089   ║"
+        - "║  ArgoCD    → http://10.40.92.46:30102   ║"
+        - "║  Semaphore → http://10.40.92.46:30860   ║"
+        - "║  Grafana   → http://10.40.92.46:30300   ║"
+        - "╚══════════════════════════════════════════╝"
