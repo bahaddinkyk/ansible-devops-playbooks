@@ -1,40 +1,43 @@
 ---
-- name: CI/CD Full Pipeline
+- name: CI/CD Full Pipeline - Health Check
   hosts: localhost
   connection: local
   gather_facts: false
+  vars:
+    sonar_token: "sqa_623ef9ef96c373ace6ef53913cd9b8c974bdaa02"
 
   tasks:
 
-  - name: "1/4 SonarQube - Proje Durumu"
+  - name: "1/6 SonarQube - Proje Kontrol"
     uri:
-      url: "http://10.40.92.46:30902/api/projects/search?projects=techstore"
+      url: "http://10.40.92.46:30902/api/projects/search"
       method: GET
-      user: ""
+      user: "{{ sonar_token }}"
       password: ""
       force_basic_auth: yes
-      status_code: [200, 201, 401, 403]
+      status_code: [200]
     register: sonar_result
     ignore_errors: yes
 
   - name: "SonarQube Sonuç"
     debug:
-      msg: "SonarQube Status: {{ sonar_result.status }} | Projeler: {{ sonar_result.json.components | default([]) | length }}"
+      msg: "✅ SonarQube: {{ sonar_result.json.components | map(attribute='name') | list }}"
+    when: sonar_result.status == 200
     ignore_errors: yes
 
-  - name: "2/4 Harbor - Registry UI Kontrol"
+  - name: "2/6 Harbor - Registry Kontrol"
     uri:
       url: "http://10.40.92.46:30088"
       method: GET
-      status_code: [200, 201, 301, 302]
+      status_code: [200, 301, 302]
     register: harbor_result
     ignore_errors: yes
 
   - name: "Harbor Sonuç"
     debug:
-      msg: "Harbor UI: {{ harbor_result.status | default('unreachable') }}"
+      msg: "{{ '✅ Harbor: OK' if harbor_result.status in [200,301,302] else '❌ Harbor: DOWN' }}"
 
-  - name: "3/4 ArgoCD - Servis Kontrol"
+  - name: "3/6 ArgoCD - Kontrol"
     uri:
       url: "http://10.40.92.46:30102"
       method: GET
@@ -44,38 +47,58 @@
 
   - name: "ArgoCD Sonuç"
     debug:
-      msg: "ArgoCD: {{ argocd_result.status | default('unreachable') }}"
+      msg: "{{ '✅ ArgoCD: OK' if argocd_result.status in [200,301,302,307] else '❌ ArgoCD: DOWN' }}"
 
-  - name: "4/4 Tüm Servisler Health Check"
+  - name: "4/6 Tüm Servisler Health Check"
     uri:
       url: "{{ item.url }}"
       method: GET
       status_code: [200, 201, 301, 302, 307, 401, 403]
-    register: health_results
+      timeout: 5
+    register: health
     ignore_errors: yes
     loop:
-      - { name: "Semaphore",  url: "http://10.40.92.46:30860" }
-      - { name: "SonarQube",  url: "http://10.40.92.46:30902" }
-      - { name: "Grafana",    url: "http://10.40.92.46:30300" }
-      - { name: "Prometheus", url: "http://10.40.92.46:30090" }
-      - { name: "Vault",      url: "http://10.40.92.46:30820" }
-      - { name: "MinIO",      url: "http://10.40.92.46:30901" }
-      - { name: "Nexus",      url: "http://10.40.92.46:30810" }
+      - { name: "Semaphore",   url: "http://10.40.92.46:30860" }
+      - { name: "Grafana",     url: "http://10.40.92.46:30300" }
+      - { name: "Prometheus",  url: "http://10.40.92.46:30090" }
+      - { name: "Vault",       url: "http://10.40.92.46:30820" }
+      - { name: "MinIO",       url: "http://10.40.92.46:30901" }
+      - { name: "Nexus",       url: "http://10.40.92.46:30810" }
+      - { name: "SonarQube",   url: "http://10.40.92.46:30902" }
+      - { name: "Trivy",       url: "http://10.40.92.46:30809" }
+      - { name: "NeuVector",   url: "https://10.40.92.46:30701" }
+      - { name: "Consul",      url: "http://10.40.92.46:30851" }
+      - { name: "Jaeger",      url: "http://10.40.92.46:30686" }
 
   - name: "Health Check Sonuçları"
     debug:
-      msg: "{{ item.item.name }}: {{ '✅ OK' if item.status in [200,201,301,302,307,401,403] else '❌ DOWN' }} ({{ item.status | default(-1) }})"
-    loop: "{{ health_results.results }}"
+      msg: "{{ '✅' if item.status | default(-1) in [200,201,301,302,307,401,403] else '❌' }} {{ item.item.name }}: HTTP {{ item.status | default('TIMEOUT') }}"
+    loop: "{{ health.results }}"
     ignore_errors: yes
 
-  - name: "Pipeline Özet"
+  - name: "5/6 SonarQube - Proje Analiz Tetikle"
+    uri:
+      url: "http://10.40.92.46:30902/api/ce/submit"
+      method: POST
+      user: "{{ sonar_token }}"
+      password: ""
+      force_basic_auth: yes
+      body_format: form-urlencoded
+      body:
+        projectKey: "techstore"
+        projectName: "TechStore"
+      status_code: [200, 201, 400, 404]
+    register: analysis
+    ignore_errors: yes
+
+  - name: "6/6 Pipeline Özet"
     debug:
       msg:
         - "╔══════════════════════════════════════╗"
-        - "║   CI/CD Pipeline Health Check        ║"
+        - "║   🎉 CI/CD PIPELINE TAMAMLANDI!       ║"
         - "╚══════════════════════════════════════╝"
-        - "Semaphore:  http://10.40.92.46:30860"
-        - "SonarQube:  http://10.40.92.46:30902"
-        - "Harbor:     http://10.40.92.46:30088"
-        - "ArgoCD:     http://10.40.92.46:30102"
-        - "Grafana:    http://10.40.92.46:30300"
+        - "SonarQube  → http://10.40.92.46:30902"
+        - "Harbor     → http://10.40.92.46:30088"
+        - "ArgoCD     → http://10.40.92.46:30102"
+        - "Semaphore  → http://10.40.92.46:30860"
+        - "Grafana    → http://10.40.92.46:30300"
