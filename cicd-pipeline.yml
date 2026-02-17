@@ -10,7 +10,7 @@
     uri:
       url: "http://10.40.92.46:30902/api/projects/search?projects=techstore"
       method: GET
-      user: "sqa_5c616d21cd3c403dd6bf876213e06847c939f09a"
+      user: ""
       password: ""
       force_basic_auth: yes
       status_code: [200, 201, 401, 403]
