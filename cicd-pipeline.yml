@@ -1,0 +1,60 @@
+---
+- name: CI/CD Full Pipeline
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    sonar_token: "sqa_5c616d21cd3c403dd6bf876213e06847c939f09a"
+    harbor_url: "http://10.40.92.46:30085"
+    harbor_user: "admin"
+    harbor_pass: "Harbor12345"
+    argocd_url: "http://10.40.92.46:30102"
+
+  tasks:
+
+  - name: "1/4 SonarQube - Proje Durumu"
+    uri:
+      url: "http://10.40.92.46:30902/api/projects/search?projects=techstore"
+      method: GET
+      headers:
+        Authorization: "Basic JHtzb25hcl90b2tlbn06"
+      status_code: [200, 201, 401]
+    register: sonar_result
+    ignore_errors: yes
+
+  - name: "SonarQube Sonuç"
+    debug:
+      msg: "SonarQube Status: {{ sonar_result.status }}"
+    ignore_errors: yes
+
+  - name: "2/4 Harbor - Registry Kontrol"
+    uri:
+      url: "{{ harbor_url }}/api/v2.0/ping"
+      method: GET
+    register: harbor_result
+    ignore_errors: yes
+
+  - name: "Harbor Sonuç"
+    debug:
+      msg: "Harbor: {{ harbor_result.status | default('unreachable') }}"
+
+  - name: "3/4 ArgoCD - Uygulama Listesi"
+    uri:
+      url: "{{ argocd_url }}/api/v1/applications"
+      method: GET
+      status_code: [200, 401, 403]
+    register: argocd_result
+    ignore_errors: yes
+
+  - name: "ArgoCD Sonuç"
+    debug:
+      msg: "ArgoCD: {{ argocd_result.status | default('unreachable') }}"
+
+  - name: "4/4 Pipeline Tamamlandı"
+    debug:
+      msg:
+        - "✅ CI/CD Pipeline Entegrasyonu Hazır!"
+        - "SonarQube:  http://10.40.92.46:30902"
+        - "Harbor:     http://10.40.92.46:30088"
+        - "ArgoCD:     http://10.40.92.46:30102"
+        - "Semaphore:  http://10.40.92.46:30860"

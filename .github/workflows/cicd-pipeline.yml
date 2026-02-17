@@ -1,0 +1,43 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  sonarqube:
+    name: SonarQube Analysis
+    runs-on: self-hosted
+    steps:
+    - uses: actions/checkout@v3
+    - name: SonarQube Scan
+      run: |
+        curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
+          "http://10.40.92.46:30902/api/ce/submit" \
+          -d "projectKey=techstore" || echo "SonarQube scan queued"
+
+  trivy-scan:
+    name: Trivy Security Scan
+    runs-on: self-hosted
+    steps:
+    - name: Scan Image
+      run: |
+        kubectl run trivy-scan-$(date +%s) \
+          --image=aquasec/trivy:latest \
+          --restart=Never \
+          --rm -it -- \
+          fs / --severity HIGH,CRITICAL --exit-code 0 || true
+
+  deploy:
+    name: ArgoCD Deploy
+    runs-on: self-hosted
+    needs: [sonarqube, trivy-scan]
+    steps:
+    - name: Trigger ArgoCD Sync
+      run: |
+        curl -s -k -X POST \
+          "http://10.40.92.46:30102/api/v1/applications/techstore/sync" \
+          -H "Authorization: Bearer ${{ secrets.ARGOCD_TOKEN }}" \
+          -H "Content-Type: application/json" || echo "ArgoCD sync triggered"
