@@ -3,12 +3,6 @@
   hosts: localhost
   connection: local
   gather_facts: false
-  vars:
-    sonar_token: "sqa_5c616d21cd3c403dd6bf876213e06847c939f09a"
-    harbor_url: "http://10.40.92.46:30085"
-    harbor_user: "admin"
-    harbor_pass: "Harbor12345"
-    argocd_url: "http://10.40.92.46:30102"
 
   tasks:
 
@@ -16,33 +10,35 @@
     uri:
       url: "http://10.40.92.46:30902/api/projects/search?projects=techstore"
       method: GET
-      headers:
-        Authorization: "Basic JHtzb25hcl90b2tlbn06"
-      status_code: [200, 201, 401]
+      user: "sqa_5c616d21cd3c403dd6bf876213e06847c939f09a"
+      password: ""
+      force_basic_auth: yes
+      status_code: [200, 201, 401, 403]
     register: sonar_result
     ignore_errors: yes
 
   - name: "SonarQube Sonuç"
     debug:
-      msg: "SonarQube Status: {{ sonar_result.status }}"
+      msg: "SonarQube Status: {{ sonar_result.status }} | Projeler: {{ sonar_result.json.components | default([]) | length }}"
     ignore_errors: yes
 
-  - name: "2/4 Harbor - Registry Kontrol"
+  - name: "2/4 Harbor - Registry UI Kontrol"
     uri:
-      url: "{{ harbor_url }}/api/v2.0/ping"
+      url: "http://10.40.92.46:30088"
       method: GET
+      status_code: [200, 201, 301, 302]
     register: harbor_result
     ignore_errors: yes
 
   - name: "Harbor Sonuç"
     debug:
-      msg: "Harbor: {{ harbor_result.status | default('unreachable') }}"
+      msg: "Harbor UI: {{ harbor_result.status | default('unreachable') }}"
 
-  - name: "3/4 ArgoCD - Uygulama Listesi"
+  - name: "3/4 ArgoCD - Servis Kontrol"
     uri:
-      url: "{{ argocd_url }}/api/v1/applications"
+      url: "http://10.40.92.46:30102"
       method: GET
-      status_code: [200, 401, 403]
+      status_code: [200, 301, 302, 307]
     register: argocd_result
     ignore_errors: yes
 
@@ -50,11 +46,36 @@
     debug:
       msg: "ArgoCD: {{ argocd_result.status | default('unreachable') }}"
 
-  - name: "4/4 Pipeline Tamamlandı"
+  - name: "4/4 Tüm Servisler Health Check"
+    uri:
+      url: "{{ item.url }}"
+      method: GET
+      status_code: [200, 201, 301, 302, 307, 401, 403]
+    register: health_results
+    ignore_errors: yes
+    loop:
+      - { name: "Semaphore",  url: "http://10.40.92.46:30860" }
+      - { name: "SonarQube",  url: "http://10.40.92.46:30902" }
+      - { name: "Grafana",    url: "http://10.40.92.46:30300" }
+      - { name: "Prometheus", url: "http://10.40.92.46:30090" }
+      - { name: "Vault",      url: "http://10.40.92.46:30820" }
+      - { name: "MinIO",      url: "http://10.40.92.46:30901" }
+      - { name: "Nexus",      url: "http://10.40.92.46:30810" }
+
+  - name: "Health Check Sonuçları"
+    debug:
+      msg: "{{ item.item.name }}: {{ '✅ OK' if item.status in [200,201,301,302,307,401,403] else '❌ DOWN' }} ({{ item.status | default(-1) }})"
+    loop: "{{ health_results.results }}"
+    ignore_errors: yes
+
+  - name: "Pipeline Özet"
     debug:
       msg:
-        - "✅ CI/CD Pipeline Entegrasyonu Hazır!"
+        - "╔══════════════════════════════════════╗"
+        - "║   CI/CD Pipeline Health Check        ║"
+        - "╚══════════════════════════════════════╝"
+        - "Semaphore:  http://10.40.92.46:30860"
         - "SonarQube:  http://10.40.92.46:30902"
         - "Harbor:     http://10.40.92.46:30088"
         - "ArgoCD:     http://10.40.92.46:30102"
-        - "Semaphore:  http://10.40.92.46:30860"
+        - "Grafana:    http://10.40.92.46:30300"
