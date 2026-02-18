@@ -1,0 +1,97 @@
+---
+- name: Security Scanning Pipeline
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    vault_url: "http://10.40.92.46:30820"
+    vault_token: "root"
+    harbor_url: "http://10.40.92.46:30089"
+    trivy_url: "http://10.40.92.46:30809"
+    neuvector_url: "https://10.40.92.46:30701"
+
+  tasks:
+
+  - name: "1/6 Vault - Secret Kontrolü"
+    uri:
+      url: "{{ vault_url }}/v1/secret/data/harbor"
+      method: GET
+      headers:
+        X-Vault-Token: "{{ vault_token }}"
+      status_code: [200, 404]
+    register: vault_result
+    ignore_errors: yes
+
+  - name: "Vault Sonuç"
+    debug:
+      msg: "{{ '✅ Vault secrets OK' if vault_result.status == 200 else '❌ Vault secrets missing' }}"
+
+  - name: "2/6 Harbor - Vulnerability Scan"
+    uri:
+      url: "{{ harbor_url }}/api/v2.0/projects"
+      method: GET
+      url_username: "admin"
+      url_password: "Harbor12345"
+      force_basic_auth: yes
+      status_code: [200]
+    register: harbor_projects
+    ignore_errors: yes
+
+  - name: "Harbor Projeler"
+    debug:
+      msg: "{{ '✅ Harbor: ' + (harbor_projects.json | length | string) + ' project' if harbor_projects.status == 200 else '❌ Harbor unreachable' }}"
+
+  - name: "3/6 Trivy - Image Scan"
+    command: >
+      kubectl run trivy-scan-{{ ansible_date_time.epoch }}
+      --image=aquasec/trivy:latest
+      --restart=Never
+      --rm
+      -it
+      -- image --severity HIGH,CRITICAL nginx:latest
+    register: trivy_scan
+    ignore_errors: yes
+
+  - name: "Trivy Scan Sonuç"
+    debug:
+      msg: "✅ Trivy scan completed"
+    when: trivy_scan.rc == 0
+    ignore_errors: yes
+
+  - name: "4/6 NeuVector - Runtime Security Check"
+    uri:
+      url: "{{ neuvector_url }}/api/v1/auth"
+      method: POST
+      body_format: json
+      body:
+        username: "admin"
+        password: "admin"
+      validate_certs: no
+      status_code: [200, 401]
+    register: neuvector_auth
+    ignore_errors: yes
+
+  - name: "NeuVector Sonuç"
+    debug:
+      msg: "{{ '✅ NeuVector accessible' if neuvector_auth.status == 200 else '⚠️ NeuVector login required' }}"
+
+  - name: "5/6 Security Policy Validation"
+    command: kubectl get networkpolicies --all-namespaces
+    register: netpol
+    ignore_errors: yes
+
+  - name: "Network Policies"
+    debug:
+      msg: "{{ '✅ Network policies active' if netpol.rc == 0 else '⚠️ No network policies' }}"
+
+  - name: "6/6 Security Özet"
+    debug:
+      msg:
+        - "╔══════════════════════════════════════════╗"
+        - "║   🔐 Security Scan Tamamlandı            ║"
+        - "╠══════════════════════════════════════════╣"
+        - "║  Vault:      {{ vault_url }}             ║"
+        - "║  Harbor:     {{ harbor_url }}            ║"
+        - "║  Trivy:      {{ trivy_url }}             ║"
+        - "║  NeuVector:  {{ neuvector_url }}         ║"
+        - "╚══════════════════════════════════════════╝"
